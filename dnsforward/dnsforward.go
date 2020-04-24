@@ -15,6 +15,7 @@ import (
 	"github.com/AdguardTeam/AdGuardHome/dnsfilter"
 	"github.com/AdguardTeam/AdGuardHome/querylog"
 	"github.com/AdguardTeam/AdGuardHome/stats"
+	"github.com/AdguardTeam/AdGuardHome/worker"
 	"github.com/AdguardTeam/dnsproxy/proxy"
 	"github.com/AdguardTeam/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/log"
@@ -743,6 +744,8 @@ func processQueryLogsAndStats(ctx *dnsContext) int {
 			p.Upstream = d.Upstream.Address()
 		}
 		s.queryLog.Add(p)
+
+		worker.ProcessDNSResult(ctx.result, d.Res)
 	}
 
 	s.updateStats(d, elapsed, *ctx.result)
