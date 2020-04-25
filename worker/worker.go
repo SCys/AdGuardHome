@@ -32,6 +32,10 @@ func ProcessDNSResult(result *dnsfilter.Result, resp *dns.Msg) {
 
 	// log.Printf("worker:%d", result.FilterID)
 
+	if result.FilterID < 10 {
+		return
+	}
+
 	var domain, ip string
 	for _, answer := range resp.Answer {
 		domain = strings.ToLower(answer.Header().Name)
@@ -40,8 +44,9 @@ func ProcessDNSResult(result *dnsfilter.Result, resp *dns.Msg) {
 		switch answer.Header().Rrtype {
 		case dns.TypeA:
 			ip = answer.(*dns.A).A.String()
-		case dns.TypeAAAA:
-			ip = answer.(*dns.A).A.String()
+		// TODO support AAA
+		// case dns.TypeAAAA:
+		// ip = answer.(*dns.AAAA).AAAA.String()
 		default:
 			continue
 		}
