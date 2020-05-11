@@ -311,6 +311,12 @@ func (s *Server) Prepare(config *ServerConfig) error {
 		FindFastestAddr:          s.conf.FastestAddrAlgo,
 	}
 
+	// SCys 固定默认的 EDNS 地址
+	if proxyConfig.EnableEDNSClientSubnet {
+		proxyConfig.EDNSAddr = net.ParseIP("8.8.8.8")
+		log.Info("EDNS use the fixed:%s", proxyConfig.EDNSAddr.String())
+	}
+
 	intlProxyConfig := proxy.Config{
 		CacheEnabled:             true,
 		CacheSizeBytes:           4096,
