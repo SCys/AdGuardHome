@@ -180,9 +180,19 @@ func (s *Server) Prepare(config *ServerConfig) error {
 		return err
 	}
 
-	// 4. Prepare a DNS proxy instance that we use for internal DNS queries
-	// --
-	s.prepareIntlProxy()
+	// SCys 固定默认的 EDNS 地址
+	if proxyConfig.EnableEDNSClientSubnet {
+		proxyConfig.EDNSAddr = net.ParseIP("8.8.8.8")
+		log.Info("EDNS use the fixed:%s", proxyConfig.EDNSAddr.String())
+	}
+
+	intlProxyConfig := proxy.Config{
+		CacheEnabled:             true,
+		CacheSizeBytes:           4096,
+		Upstreams:                s.conf.Upstreams,
+		DomainsReservedUpstreams: s.conf.DomainsReservedUpstreams,
+	}
+	s.internalProxy = &proxy.Proxy{Config: intlProxyConfig}
 
 	// 5. Initialize DNS access module
 	// --
