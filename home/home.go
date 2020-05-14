@@ -208,6 +208,11 @@ func run(args options) {
 		}
 	}
 
+	// 'clients' module uses 'dnsfilter' module's static data (dnsfilter.BlockedSvcKnown()),
+	//  so we have to initialize dnsfilter's static data first,
+	//  but also avoid relying on automatic Go init() function
+	dnsfilter.InitModule()
+
 	config.DHCP.WorkDir = Context.workDir
 	config.DHCP.HTTPRegister = httpRegister
 	config.DHCP.ConfigModified = onConfigModified
@@ -331,6 +336,8 @@ func requireAdminRights() {
 	admin, _ := util.HaveAdminRights()
 	if //noinspection ALL
 	admin || isdelve.Enabled {
+		// Don't forget that for this to work you need to add "delve" tag explicitly
+		// https://stackoverflow.com/questions/47879070/how-can-i-see-if-the-goland-debugger-is-running-in-the-program
 		return
 	}
 
