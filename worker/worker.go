@@ -60,6 +60,7 @@ func ProcessDNSResult(result *dnsfilter.Result, resp *dns.Msg) {
 			continue
 		}
 
+		// cmd := exec.Command("nft", "add", "element", "gfw", "temp", "{", ip, "timeout", "1200s", "expires", "1200s", "}")
 		cmd := exec.Command("nft", "add", "element", "gfw", "temp", "{", ip, "timeout", "15m", "}")
 
 		var buf bytes.Buffer
