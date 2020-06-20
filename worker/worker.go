@@ -1,12 +1,20 @@
 package worker
 
 import (
+<<<<<<< HEAD
+=======
+	"bytes"
+>>>>>>> b3d0d2b5f4afe6594b4118d3b2244f21591fe841
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/AdguardTeam/AdGuardHome/dnsfilter"
 	"github.com/AdguardTeam/golibs/log"
+<<<<<<< HEAD
+=======
+	"github.com/karlseguin/ccache"
+>>>>>>> b3d0d2b5f4afe6594b4118d3b2244f21591fe841
 	"github.com/miekg/dns"
 )
 
