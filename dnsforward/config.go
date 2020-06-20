@@ -146,18 +146,6 @@ func (s *Server) createProxyConfig() (proxy.Config, error) {
 		EnableEDNSClientSubnet: s.conf.EnableEDNSClientSubnet,
 	}
 
-	if s.conf.CacheSize != 0 {
-		proxyConfig.CacheEnabled = true
-		proxyConfig.CacheSizeBytes = int(s.conf.CacheSize)
-	}
-
-	proxyConfig.UpstreamMode = proxy.UModeLoadBalance
-	if s.conf.AllServers {
-		proxyConfig.UpstreamMode = proxy.UModeParallel
-	} else if s.conf.FastestAddr {
-		proxyConfig.UpstreamMode = proxy.UModeFastestAddr
-	}
-
 	if len(s.conf.BogusNXDomain) > 0 {
 		for _, s := range s.conf.BogusNXDomain {
 			ip := net.ParseIP(s)
