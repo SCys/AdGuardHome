@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/AdguardTeam/AdGuardHome/querylog"
-	"github.com/AdguardTeam/AdGuardHome/worker"
 	"github.com/miekg/dns"
 
 	"github.com/AdguardTeam/AdGuardHome/dnsfilter"
@@ -51,8 +50,6 @@ func processQueryLogsAndStats(ctx *dnsContext) int {
 			p.Upstream = d.Upstream.Address()
 		}
 		s.queryLog.Add(p)
-
-		worker.ProcessDNSResult(ctx.result, d.Res)
 	}
 
 	s.updateStats(d, elapsed, *ctx.result)
