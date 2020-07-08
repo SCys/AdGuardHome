@@ -13,6 +13,7 @@ require (
 	github.com/kardianos/service v1.0.0
 	github.com/karlseguin/ccache v2.0.3+incompatible
 	github.com/krolaw/dhcp4 v0.0.0-20180925202202-7cead472c414
+	github.com/lionsoul2014/ip2region v2.2.0-release+incompatible
 	github.com/miekg/dns v1.1.29
 	github.com/pkg/errors v0.9.1
 	github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c

@@ -7,20 +7,14 @@ import (
 	"github.com/AdguardTeam/AdGuardHome/dnsfilter"
 	"github.com/AdguardTeam/AdGuardHome/querylog"
 	"github.com/AdguardTeam/golibs/log"
+	"github.com/lionsoul2014/ip2region/binding/golang/ip2region"
 	"github.com/miekg/dns"
 )
 
-var (
-	manager      = RuleManager{}
-	queueDefault chan string
-)
+var region *ip2region.Ip2Region
 
 func _nftCmd(ip string) error {
 	cmd := exec.Command("nft", "add", "element", "gfw", "temp", "{", ip, "timeout", "24h", "}")
-
-	// var buf bytes.Buffer
-	// cmd.Stderr = &buf
-
 	return cmd.Run()
 }
 
@@ -50,11 +44,32 @@ func ProcessDNSResult(params querylog.AddParams) {
 			continue
 		}
 
+		info, err := region.MemorySearch(ip)
+		if err != nil {
+			log.Error("ip2region error:%s", err.Error())
+			continue
+		}
+
+		// ignore chinese ip
+		if info.Country == "中国" || info.Country == "China" || info.Country == "CN" {
+			continue
+		}
+
 		if err := _nftCmd(ip); err != nil {
 			log.Error("cmd error:%d %s=>%s do %s", result.FilterID, domain, ip, err.Error())
 		} else {
 			// cache.Set(ip, true, 30*time.Second)
-			log.Info("cmd:%d %s=>%s", result.FilterID, domain, ip)
+			// log.Info("cmd:%d %s=>%s", result.FilterID, domain, ip)
+			log.Info("setup %s=>%s location %s/%s/%s", domain, ip, info.Country, info.Province, info.City)
 		}
+	}
+}
+
+func init() {
+	var err error
+
+	region, err = ip2region.New("/data/data/ip2region.db")
+	if err != nil {
+		log.Fatalf("ip2region error:%s", err.Error())
 	}
 }
