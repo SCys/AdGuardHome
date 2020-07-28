@@ -3,15 +3,14 @@ module github.com/AdguardTeam/AdGuardHome
 go 1.14
 
 require (
-	github.com/AdguardTeam/dnsproxy v0.29.0
+	github.com/AdguardTeam/dnsproxy v0.29.1
 	github.com/AdguardTeam/golibs v0.4.2
-	github.com/AdguardTeam/urlfilter v0.10.1
+	github.com/AdguardTeam/urlfilter v0.11.2
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/gobuffalo/packr v1.30.1
 	github.com/joomcode/errorx v1.0.1
-	github.com/kardianos/service v1.0.0
-	github.com/karlseguin/ccache v2.0.3+incompatible
+	github.com/kardianos/service v1.1.0
 	github.com/krolaw/dhcp4 v0.0.0-20180925202202-7cead472c414
 	github.com/lionsoul2014/ip2region v2.2.0-release+incompatible
 	github.com/miekg/dns v1.1.29
