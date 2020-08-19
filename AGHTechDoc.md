@@ -22,7 +22,8 @@ Contents:
 	* Update client
 	* Delete client
 	* API: Find clients by IP
-* Enable DHCP server
+* DHCP server
+	* DHCP server in DNS
 	* "Show DHCP status" command
 	* "Check DHCP" command
 	* "Enable DHCP" command
@@ -64,6 +65,7 @@ Contents:
 	* API: Log in
 	* API: Log out
 	* API: Get current user info
+* Safe services
 
 
 ## Relations between subsystems
@@ -344,9 +346,13 @@ Response:
 
 If `can_autoupdate` is true, then the server can automatically upgrade to a new version.
 
-Response with empty body:
+Response when auto-update is disabled by command-line argument:
 
 	200 OK
+
+	{
+		"disabled":true
+	}
 
 It means that update check is disabled by user.  UI should do nothing.
 
@@ -370,9 +376,9 @@ Error response:
 UI shows error message "Auto-update has failed"
 
 
-## Enable DHCP server
+## DHCP server
 
-Algorithm:
+Enable DHCP server algorithm:
 
 * UI shows DHCP configuration screen with "Enabled DHCP" button disabled, and "Check DHCP" button enabled
 * User clicks on "Check DHCP"; UI sends request to server
@@ -382,6 +388,21 @@ Algorithm:
 * User clicks on "Enable DHCP"; UI sends request to server
 * Server sets a static IP (if necessary), enables DHCP server, sends the status back to UI
 * UI shows the status
+
+
+### DHCP server in DNS
+
+DHCP leases are used in several ways by DNS module.
+
+* For "A" DNS reqeust we reply with an IP address leased by our DHCP server.
+
+		< A bills-notebook.lan.
+		> A bills-notebook.lan. = 192.168.1.100
+
+* For "PTR" DNS request we reply with a hostname from an active DHCP lease.
+
+		< PTR 100.1.168.192.in-addr.arpa.
+		> PTR 100.1.168.192.in-addr.arpa. = bills-notebook.
 
 
 ### "Show DHCP status" command
@@ -894,6 +915,9 @@ Response:
 		"dnssec_enabled": true | false
 		"disable_ipv6": true | false,
 		"upstream_mode": "" | "parallel" | "fastest_addr"
+		"cache_size": 1234, // in bytes
+		"cache_ttl_min": 1234, // in seconds
+		"cache_ttl_max": 1234, // in seconds
 	}
 
 
@@ -916,6 +940,9 @@ Request:
 		"dnssec_enabled": true | false
 		"disable_ipv6": true | false,
 		"upstream_mode": "" | "parallel" | "fastest_addr"
+		"cache_size": 1234, // in bytes
+		"cache_ttl_min": 1234, // in seconds
+		"cache_ttl_max": 1234, // in seconds
 	}
 
 Response:
@@ -979,6 +1006,110 @@ Response:
 
 This section allows the administrator to easily configure custom DNS response for a specific domain name.
 A, AAAA and CNAME records are supported.
+
+Syntax:
+
+	key -> value
+
+where `key` is a host name or a wild card that matches Question in DNS request
+and `value` is either:
+* IPv4 address: use this IP in A response
+* IPv6 address: use this IP in AAAA response
+* canonical name: add CNAME record
+* "<key>": CNAME exception - pass request to upstream
+* "A": A exception - pass A request to upstream
+* "AAAA": AAAA exception - pass AAAA request to upstream
+
+
+#### Example: A record
+
+	host.com -> 1.2.3.4
+
+Response:
+
+	A:
+		A = 1.2.3.4
+	AAAA:
+		<empty>
+
+#### Example: AAAA record
+
+	host.com -> ::1
+
+Response:
+
+	A:
+		<empty>
+	AAAA:
+		AAAA = ::1
+
+#### Example: CNAME record
+
+	sub.host.com -> host.com
+
+Response:
+
+	A:
+		CNAME = host.com
+		A = <IPv4 address of host.com>
+	AAAA:
+		CNAME = host.com
+		AAAA = <IPv6 address of host.com>
+
+#### Example: CNAME+A records
+
+	sub.host.com -> host.com
+	host.com -> 1.2.3.4
+
+Response:
+
+	A:
+		CNAME = host.com
+		A = 1.2.3.4
+	AAAA:
+		CNAME = host.com
+
+#### Example: Wildcard CNAME+A record with CNAME exception
+
+	*.host.com -> 1.2.3.4
+	pass.host.com -> pass.host.com
+
+Response to `my.host.com`:
+
+	A:
+		A = 1.2.3.4
+	AAAA:
+		<empty>
+
+Response to `pass.host.com`:
+
+	A:
+		A = <IPv4 address of pass.host.com>
+	AAAA:
+		AAAA = <IPv6 address of pass.host.com>
+
+#### Example: A record with AAAA exception
+
+	host.com -> 1.2.3.4
+	host.com -> AAAA
+
+Response:
+
+	A:
+		A = 1.2.3.4
+	AAAA:
+		AAAA = <IPv6 address of host.com>
+
+#### Example: pass A only
+
+	host.com -> A
+
+Response:
+
+	A:
+		A = <IPv4 address of host.com>
+	AAAA:
+		<empty>
 
 
 ### API: List rewrite entries
@@ -1633,3 +1764,40 @@ Response:
 	}
 
 If no client is configured then authentication is disabled and server sends an empty response.
+
+
+### Safe services
+
+Check if host name is blocked by SB/PC service:
+
+* For each host name component, search for the result in cache by the first 2 bytes of SHA-256 hashes of host name components (max. is 4, i.e. sub2.sub1.host.com), excluding TLD:
+
+		hashes[] = cache_search(sha256(host.com)[0..1])
+		...
+
+	If hash prefix is found, search for a full hash sum in the cached data.
+	If found, the host is blocked.
+	If not found, the host is not blocked - don't request data for this prefix from the Family server again.
+	If hash prefix is not found, request data for this prefix from the Family server.
+
+* Prepare query string which is generated from the first 2 bytes (converted to a 4-character string) of SHA-256 hashes of host name components (max. is 4, i.e. sub2.sub1.host.com), excluding TLD:
+
+		qs = ... + string(sha256(sub.host.com)[0..1]) + "." + string(sha256(host.com)[0..1]) + ".sb.dns.adguard.com."
+
+	For PC `.pc.dns.adguard.com` suffix is used.
+
+* Send TXT query to Family server, receive response which contains the array of complete hash sums of the blocked hosts
+
+* Check if one of received hash sums (`hashes[]`) matches hash sums for our host name
+
+		hashes[0] <> sha256(host.com)
+		hashes[0] <> sha256(sub.host.com)
+		hashes[1] <> sha256(host.com)
+		hashes[1] <> sha256(sub.host.com)
+		...
+
+* Store all received hash sums in cache:
+
+		sha256(host.com)[0..1] -> hashes[0],hashes[1],...
+		sha256(sub.host.com)[0..1] -> hashes[2],...
+		...

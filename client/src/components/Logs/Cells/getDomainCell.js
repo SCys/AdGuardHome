@@ -1,13 +1,14 @@
 import React from 'react';
 import classNames from 'classnames';
 import PropTypes from 'prop-types';
-import getHintElement from './getHintElement';
+import getIconTooltip from './getIconTooltip';
 import {
     DEFAULT_SHORT_DATE_FORMAT_OPTIONS,
     LONG_TIME_FORMAT,
     SCHEME_TO_PROTOCOL_MAP,
 } from '../../../helpers/constants';
-import { formatDateTime, formatTime } from '../../../helpers/helpers';
+import { captitalizeWords, formatDateTime, formatTime } from '../../../helpers/helpers';
+import { getSourceData } from '../../../helpers/trackers/trackers';
 
 const getDomainCell = (props) => {
     const {
@@ -20,28 +21,16 @@ const getDomainCell = (props) => {
 
     const hasTracker = !!tracker;
 
-    const source = tracker && tracker.sourceData && tracker.sourceData.name;
-
-    const lockIconClass = classNames('icons', 'icon--small', 'd-none', 'd-sm-block', 'cursor--pointer', {
-        'icon--active': answer_dnssec,
+    const lockIconClass = classNames('icons icon--24 d-none d-sm-block', {
+        'icon--green': answer_dnssec,
         'icon--disabled': !answer_dnssec,
         'my-3': isDetailed,
     });
 
-    const privacyIconClass = classNames('icons', 'mx-2', 'icon--small', 'd-none', 'd-sm-block', 'cursor--pointer', {
-        'icon--active': hasTracker,
+    const privacyIconClass = classNames('icons mx-2 icon--24 d-none d-sm-block', {
+        'icon--green': hasTracker,
         'icon--disabled': !hasTracker,
         'my-3': isDetailed,
-    });
-
-    const dnssecHint = getHintElement({
-        className: lockIconClass,
-        tooltipClass: 'py-4 px-5 pb-45',
-        canShowTooltip: answer_dnssec,
-        xlinkHref: 'lock',
-        columnClass: 'w-100',
-        content: 'validated_with_dnssec',
-        placement: 'bottom',
     });
 
     const protocol = t(SCHEME_TO_PROTOCOL_MAP[client_proto]) || '';
@@ -55,15 +44,19 @@ const getDomainCell = (props) => {
         protocol,
     };
 
+    const sourceData = getSourceData(tracker);
+
     const knownTrackerDataObj = {
-        name_table_header: tracker && tracker.name,
-        category_label: tracker && tracker.category,
-        source_label: source && <a href={`//${source}`} className="link--green">{source}</a>,
+        name_table_header: tracker?.name,
+        category_label: hasTracker && captitalizeWords(tracker.category),
+        source_label: sourceData
+            && <a href={sourceData.url} target="_blank" rel="noopener noreferrer"
+                  className="link--green">{sourceData.name}</a>,
     };
 
     const renderGrid = (content, idx) => {
         const preparedContent = typeof content === 'string' ? t(content) : content;
-        const className = classNames('text-truncate key-colon o-hidden', {
+        const className = classNames('text-truncate o-hidden', {
             'overflow-break': preparedContent.length > 100,
         });
         return <div key={idx} className={className}>{preparedContent}</div>;
@@ -71,14 +64,15 @@ const getDomainCell = (props) => {
 
     const getGrid = (contentObj, title, className) => [
         <div key={title} className={classNames('pb-2 grid--title', className)}>{t(title)}</div>,
-        <div key={`${title}-1`} className="grid grid--limited">{React.Children.map(Object.entries(contentObj), renderGrid)}</div>,
+        <div key={`${title}-1`}
+             className="grid grid--limited">{React.Children.map(Object.entries(contentObj), renderGrid)}</div>,
     ];
 
     const requestDetails = getGrid(requestDetailsObj, 'request_details');
 
     const renderContent = hasTracker ? requestDetails.concat(getGrid(knownTrackerDataObj, 'known_tracker', 'pt-4')) : requestDetails;
 
-    const trackerHint = getHintElement({
+    const trackerHint = getIconTooltip({
         className: privacyIconClass,
         tooltipClass: 'pt-4 pb-5 px-5 mw-75',
         xlinkHref: 'privacy',
@@ -96,7 +90,15 @@ const getDomainCell = (props) => {
 
     return (
         <div className="logs__row o-hidden">
-            {dnssec_enabled && dnssecHint}
+            {dnssec_enabled && getIconTooltip({
+                className: lockIconClass,
+                tooltipClass: 'py-4 px-5 pb-45',
+                canShowTooltip: answer_dnssec,
+                xlinkHref: 'lock',
+                columnClass: 'w-100',
+                content: 'validated_with_dnssec',
+                placement: 'bottom',
+            })}
             {trackerHint}
             <div className={valueClass}>
                 <div className="text-truncate" title={domain}>{domain}</div>

@@ -2,8 +2,9 @@ import { createAction } from 'redux-actions';
 import i18next from 'i18next';
 import axios from 'axios';
 
-import { isVersionGreater, normalizeTextarea, sortClients } from '../helpers/helpers';
+import { splitByNewLine, sortClients } from '../helpers/helpers';
 import { CHECK_TIMEOUT, SETTINGS_NAMES } from '../helpers/constants';
+import { areEqualVersions } from '../helpers/version';
 import { getTlsStatus } from './encryption';
 import apiClient from '../api/Api';
 import { addErrorToast, addNoticeToast, addSuccessToast } from './toasts';
@@ -70,9 +71,18 @@ export const initSettings = (settingsList) => async (dispatch) => {
             safesearch,
         } = settingsList;
         const newSettingsList = {
-            safebrowsing: { ...safebrowsing, enabled: safebrowsingStatus.enabled },
-            parental: { ...parental, enabled: parentalStatus.enabled },
-            safesearch: { ...safesearch, enabled: safesearchStatus.enabled },
+            safebrowsing: {
+                ...safebrowsing,
+                enabled: safebrowsingStatus.enabled,
+            },
+            parental: {
+                ...parental,
+                enabled: parentalStatus.enabled,
+            },
+            safesearch: {
+                ...safesearch,
+                enabled: safesearchStatus.enabled,
+            },
         };
         dispatch(initSettingsSuccess({ settingsList: newSettingsList }));
     } catch (error) {
@@ -112,7 +122,7 @@ export const getVersion = (recheck = false) => async (dispatch, getState) => {
             const { dnsVersion } = getState().dashboard;
             const currentVersion = dnsVersion === 'undefined' ? 0 : dnsVersion;
 
-            if (data && isVersionGreater(currentVersion, data.new_version)) {
+            if (data && !areEqualVersions(currentVersion, data.new_version)) {
                 dispatch(addSuccessToast('updates_checked'));
             } else {
                 dispatch(addSuccessToast('updates_version_equal'));
@@ -138,9 +148,9 @@ const checkStatus = async (handleRequestSuccess, handleRequestError, attempts = 
     const rmTimeout = (t) => t && clearTimeout(t);
 
     try {
-        const response = await axios.get('control/status');
+        const response = await axios.get(`${apiClient.baseUrl}/status`);
         rmTimeout(timeout);
-        if (response && response.status === 200) {
+        if (response?.status === 200) {
             handleRequestSuccess(response);
             if (response.data.running === false) {
                 timeout = setTimeout(
@@ -174,7 +184,7 @@ export const getUpdate = () => async (dispatch, getState) => {
     };
 
     const handleRequestSuccess = (response) => {
-        const responseVersion = response.data && response.data.version;
+        const responseVersion = response.data?.version;
 
         if (dnsVersion !== responseVersion) {
             dispatch(getUpdateSuccess());
@@ -270,17 +280,18 @@ export const testUpstream = (config) => async (dispatch) => {
     dispatch(testUpstreamRequest());
     try {
         const values = { ...config };
-        values.bootstrap_dns = normalizeTextarea(values.bootstrap_dns);
-        values.upstream_dns = normalizeTextarea(values.upstream_dns);
+        values.bootstrap_dns = splitByNewLine(values.bootstrap_dns);
+        values.upstream_dns = splitByNewLine(values.upstream_dns);
 
         const upstreamResponse = await apiClient.testUpstream(values);
-        const testMessages = Object.keys(upstreamResponse).map((key) => {
-            const message = upstreamResponse[key];
-            if (message !== 'OK') {
-                dispatch(addErrorToast({ error: i18next.t('dns_test_not_ok_toast', { key }) }));
-            }
-            return message;
-        });
+        const testMessages = Object.keys(upstreamResponse)
+            .map((key) => {
+                const message = upstreamResponse[key];
+                if (message !== 'OK') {
+                    dispatch(addErrorToast({ error: i18next.t('dns_test_not_ok_toast', { key }) }));
+                }
+                return message;
+            });
 
         if (testMessages.every((message) => message === 'OK')) {
             dispatch(addSuccessToast('dns_test_ok_toast'));
@@ -393,11 +404,17 @@ export const toggleDhcpSuccess = createAction('TOGGLE_DHCP_SUCCESS');
 
 export const toggleDhcp = (values) => async (dispatch) => {
     dispatch(toggleDhcpRequest());
-    let config = { ...values, enabled: false };
+    let config = {
+        ...values,
+        enabled: false,
+    };
     let successMessage = 'disabled_dhcp';
 
     if (!values.enabled) {
-        config = { ...values, enabled: true };
+        config = {
+            ...values,
+            enabled: true,
+        };
         successMessage = 'enabled_dhcp';
         dispatch(findActiveDhcp(values.interface_name));
     }

@@ -1,9 +1,13 @@
 package dnsforward
 
 import (
+	"net"
+	"strings"
 	"time"
 
+	"github.com/AdguardTeam/AdGuardHome/dhcpd"
 	"github.com/AdguardTeam/AdGuardHome/dnsfilter"
+	"github.com/AdguardTeam/AdGuardHome/util"
 	"github.com/AdguardTeam/dnsproxy/proxy"
 	"github.com/AdguardTeam/golibs/log"
 	"github.com/miekg/dns"
@@ -39,6 +43,8 @@ func (s *Server) handleDNSRequest(_ *proxy.Proxy, d *proxy.DNSContext) error {
 	type modProcessFunc func(ctx *dnsContext) int
 	mods := []modProcessFunc{
 		processInitial,
+		processInternalHosts,
+		processInternalIPAddrs,
 		processFilteringBeforeRequest,
 		processUpstream,
 		processDNSSECAfterResponse,
@@ -88,10 +94,158 @@ func processInitial(ctx *dnsContext) int {
 	return resultDone
 }
 
+// Return TRUE if host names doesn't contain disallowed characters
+func isHostnameOK(hostname string) bool {
+	for _, c := range hostname {
+		if !((c >= 'a' && c <= 'z') ||
+			(c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') ||
+			c == '.' || c == '-') {
+			log.Debug("DNS: skipping invalid hostname %s from DHCP", hostname)
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Server) onDHCPLeaseChanged(flags int) {
+	switch flags {
+	case dhcpd.LeaseChangedAdded,
+		dhcpd.LeaseChangedAddedStatic,
+		dhcpd.LeaseChangedRemovedStatic:
+		//
+	default:
+		return
+	}
+
+	hostToIP := make(map[string]net.IP)
+	m := make(map[string]string)
+
+	ll := s.dhcpServer.Leases(dhcpd.LeasesAll)
+
+	for _, l := range ll {
+		if len(l.Hostname) == 0 || !isHostnameOK(l.Hostname) {
+			continue
+		}
+
+		lowhost := strings.ToLower(l.Hostname)
+
+		m[l.IP.String()] = lowhost
+
+		ip := make(net.IP, 4)
+		copy(ip, l.IP.To4())
+		hostToIP[lowhost] = ip
+	}
+
+	log.Debug("DNS: added %d A/PTR entries from DHCP", len(m))
+
+	s.tableHostToIPLock.Lock()
+	s.tableHostToIP = hostToIP
+	s.tableHostToIPLock.Unlock()
+
+	s.tablePTRLock.Lock()
+	s.tablePTR = m
+	s.tablePTRLock.Unlock()
+}
+
+// Respond to A requests if the target host name is associated with a lease from our DHCP server
+func processInternalHosts(ctx *dnsContext) int {
+	s := ctx.srv
+	req := ctx.proxyCtx.Req
+	if !(req.Question[0].Qtype == dns.TypeA || req.Question[0].Qtype == dns.TypeAAAA) {
+		return resultDone
+	}
+
+	host := req.Question[0].Name
+	host = strings.ToLower(host)
+	if !strings.HasSuffix(host, ".lan.") {
+		return resultDone
+	}
+	host = strings.TrimSuffix(host, ".lan.")
+
+	s.tableHostToIPLock.Lock()
+	if s.tableHostToIP == nil {
+		s.tableHostToIPLock.Unlock()
+		return resultDone
+	}
+	ip, ok := s.tableHostToIP[host]
+	s.tableHostToIPLock.Unlock()
+	if !ok {
+		return resultDone
+	}
+
+	log.Debug("DNS: internal record: %s -> %s", req.Question[0].Name, ip.String())
+
+	resp := s.makeResponse(req)
+
+	if req.Question[0].Qtype == dns.TypeA {
+		a := &dns.A{}
+		a.Hdr = dns.RR_Header{
+			Name:   req.Question[0].Name,
+			Rrtype: dns.TypeA,
+			Ttl:    s.conf.BlockedResponseTTL,
+			Class:  dns.ClassINET,
+		}
+		a.A = make([]byte, 4)
+		copy(a.A, ip)
+		resp.Answer = append(resp.Answer, a)
+	}
+
+	ctx.proxyCtx.Res = resp
+	return resultDone
+}
+
+// Respond to PTR requests if the target IP address is leased by our DHCP server
+func processInternalIPAddrs(ctx *dnsContext) int {
+	s := ctx.srv
+	req := ctx.proxyCtx.Req
+	if req.Question[0].Qtype != dns.TypePTR {
+		return resultDone
+	}
+
+	arpa := req.Question[0].Name
+	arpa = strings.TrimSuffix(arpa, ".")
+	arpa = strings.ToLower(arpa)
+	ip := util.DNSUnreverseAddr(arpa)
+	if ip == nil {
+		return resultDone
+	}
+
+	s.tablePTRLock.Lock()
+	if s.tablePTR == nil {
+		s.tablePTRLock.Unlock()
+		return resultDone
+	}
+	host, ok := s.tablePTR[ip.String()]
+	s.tablePTRLock.Unlock()
+	if !ok {
+		return resultDone
+	}
+
+	log.Debug("DNS: reverse-lookup: %s -> %s", arpa, host)
+
+	resp := s.makeResponse(req)
+	ptr := &dns.PTR{}
+	ptr.Hdr = dns.RR_Header{
+		Name:   req.Question[0].Name,
+		Rrtype: dns.TypePTR,
+		Ttl:    s.conf.BlockedResponseTTL,
+		Class:  dns.ClassINET,
+	}
+	ptr.Ptr = host + "."
+	resp.Answer = append(resp.Answer, ptr)
+	ctx.proxyCtx.Res = resp
+	return resultDone
+}
+
 // Apply filtering logic
 func processFilteringBeforeRequest(ctx *dnsContext) int {
 	s := ctx.srv
 	d := ctx.proxyCtx
+
+	if d.Res != nil {
+		return resultDone // response is already set - nothing to do
+	}
 
 	s.RLock()
 	// Synchronize access to s.dnsFilter so it won't be suddenly uninitialized while in use.

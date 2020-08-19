@@ -47,9 +47,9 @@ func NewForTest(c *Config, filters []Filter) *Dnsfilter {
 	setts = RequestFilteringSettings{}
 	setts.FilteringEnabled = true
 	if c != nil {
-		c.SafeBrowsingCacheSize = 1000
+		c.SafeBrowsingCacheSize = 10000
+		c.ParentalCacheSize = 10000
 		c.SafeSearchCacheSize = 1000
-		c.ParentalCacheSize = 1000
 		c.CacheTime = 30
 		setts.SafeSearchEnabled = c.SafeSearchEnabled
 		setts.SafeBrowsingEnabled = c.SafeBrowsingEnabled
